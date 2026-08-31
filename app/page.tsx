@@ -17,7 +17,7 @@ function radius(v:number|null,m:MetricKey){if(!v)return 0;return Math.max(9,Math
 type WorldGeometry={type:'Polygon'|'MultiPolygon';coordinates:number[][][]|number[][][][]};
 type WorldData={features:{geometry:WorldGeometry}[]};
 function WorldCanvas({items,year,metric,selected,onSelect,theme}:{items:Company[];year:number;metric:MetricKey;selected:Company|null;onSelect:(company:Company)=>void;theme:'dark'|'light'}){
- const canvas=useRef<HTMLCanvasElement>(null),[world,setWorld]=useState<WorldData|null>(null),points=useRef<{company:Company;x:number;y:number;r:number}[]>([]);
+ const canvas=useRef<HTMLCanvasElement>(null),[world,setWorld]=useState<WorldData|null>(null),points=useRef<{company:Company;x:number;y:number;r:number}[]>([]),[view,setView]=useState({scale:1,x:0,y:0}),drag=useRef<{x:number;y:number;originX:number;originY:number;moved:boolean}|null>(null);
  useEffect(()=>{fetch('/countries.geojson').then(r=>r.json()).then(setWorld).catch(()=>setWorld({features:[]}));},[]);
  useEffect(()=>{
   const el=canvas.current;if(!el)return;
@@ -25,15 +25,15 @@ function WorldCanvas({items,year,metric,selected,onSelect,theme}:{items:Company[
    const box=el.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
    el.width=box.width*dpr;el.height=box.height*dpr;
    const ctx=el.getContext('2d');if(!ctx)return;ctx.scale(dpr,dpr);
-   const w=box.width,h=box.height,centerLng=140,project=(lng:number,lat:number)=>{const relative=((lng-centerLng+540)%360)-180;return{x:(relative+180)/360*w,y:(90-lat)/180*h}};
+   const w=box.width,h=box.height,centerLng=140,project=(lng:number,lat:number)=>{const relative=((lng-centerLng+540)%360)-180,bx=(relative+180)/360*w,by=(90-lat)/180*h;return{x:(bx-w/2)*view.scale+w/2+view.x,y:(by-h/2)*view.scale+h/2+view.y}};
    ctx.fillStyle=theme==='dark'?'#0b0f14':'#f5f6f4';ctx.fillRect(0,0,w,h);ctx.fillStyle=theme==='dark'?'#18212a':'#dfe4df';ctx.strokeStyle=theme==='dark'?'#43525f':'#aab5ad';ctx.lineWidth=.65;
    const polygon=(rings:number[][][])=>{ctx.beginPath();rings.forEach(ring=>{let previousX:number|undefined;ring.forEach(([lng,lat],i)=>{const p=project(lng,lat);if(i===0||previousX===undefined||Math.abs(p.x-previousX)>w/2)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);previousX=p.x})});ctx.fill('evenodd');ctx.stroke()};
    world?.features.forEach(f=>{if(f.geometry.type==='Polygon')polygon(f.geometry.coordinates as number[][][]);else (f.geometry.coordinates as number[][][][]).forEach(polygon)});
    points.current=items.flatMap(company=>{const value=company.metrics[year]?.[metric]??null,r=radius(value,metric);if(!r)return[];const p=project(company.lng,company.lat),grad=ctx.createRadialGradient(p.x,p.y,1,p.x,p.y,r);grad.addColorStop(0,company.accent+'aa');grad.addColorStop(1,company.accent+'22');ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=grad;ctx.fill();ctx.strokeStyle=company.accent;ctx.lineWidth=selected?.id===company.id?2:1;ctx.stroke();if(r>15){ctx.fillStyle='#fff';ctx.font='700 8px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(company.ticker.slice(0,4),p.x,p.y)}return[{company,x:p.x,y:p.y,r}]});
   };
   draw();const resize=new ResizeObserver(draw);resize.observe(el);return()=>resize.disconnect();
- },[world,items,year,metric,selected,theme]);
- return <canvas ref={canvas} className="map-canvas" aria-label="世界企業マップ" onClick={e=>{const rect=e.currentTarget.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top,hit=[...points.current].reverse().find(p=>Math.hypot(p.x-x,p.y-y)<=p.r);if(hit)onSelect(hit.company)}}/>;
+ },[world,items,year,metric,selected,theme,view]);
+ return <canvas ref={canvas} className="map-canvas" aria-label="世界企業マップ" onWheel={e=>{e.preventDefault();const rect=e.currentTarget.getBoundingClientRect(),cx=e.clientX-rect.left,cy=e.clientY-rect.top;setView(old=>{const next=Math.max(1,Math.min(6,old.scale*(e.deltaY<0?1.18:.85)));if(next===1)return{scale:1,x:0,y:0};return{scale:next,x:cx-rect.width/2-(cx-rect.width/2-old.x)/old.scale*next,y:cy-rect.height/2-(cy-rect.height/2-old.y)/old.scale*next}})}} onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);drag.current={x:e.clientX,y:e.clientY,originX:view.x,originY:view.y,moved:false}}} onPointerMove={e=>{if(!drag.current)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;if(Math.abs(dx)+Math.abs(dy)>3)drag.current.moved=true;setView(v=>({...v,x:drag.current!.originX+dx,y:drag.current!.originY+dy}))}} onPointerUp={e=>{const moved=drag.current?.moved;drag.current=null;e.currentTarget.releasePointerCapture(e.pointerId);if(moved)return;const rect=e.currentTarget.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top,hit=[...points.current].reverse().find(p=>Math.hypot(p.x-x,p.y-y)<=p.r);if(hit)onSelect(hit.company)}}/>;
 }
 
 export default function Home(){
