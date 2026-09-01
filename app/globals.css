@@ -13,6 +13,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","No
 .topbar{height:60px;padding:0 24px;background:#0b0f14}
 .brand{font-size:15px;letter-spacing:.03em;gap:10px}.brand-mark{width:28px;height:28px;font-size:19px}.brand small{display:none}
 .header-note{font-size:10px}.control-deck{min-height:72px;padding:10px 24px;grid-template-columns:90px 135px 165px 145px 85px minmax(200px,1fr);background:#0b0f14}
+.header-note.loading .live-dot{background:#e0b75b;box-shadow:none}.header-note.fallback .live-dot{background:#7d8790;box-shadow:none}
 .control-deck label{padding:0 14px;gap:5px}.control-deck label>span{font-size:8px;letter-spacing:.08em}select{font-size:12px}.search div{height:32px;background:#11171e}
 .map-stage{height:calc(100vh - 169px);min-height:500px}.map::after{display:none}.map-heading{left:24px;top:22px}.map-heading p{margin:0 0 6px;font-size:9px;letter-spacing:.08em;color:#98a4af}.map-heading h1{font-size:22px;line-height:1.2;letter-spacing:-.03em}.map-heading span{margin-top:6px;font-size:9px}
 .company-card{top:154px;right:20px;width:280px;padding:18px;background:rgba(13,18,24,.96);box-shadow:none}.company-head{padding-bottom:14px}.monogram{width:38px;height:38px}.company-head h2{font-size:15px}.hero-metric{padding:15px 0}.hero-metric strong{font-size:24px}.metric-grid div{padding:9px}.rank{margin-top:12px;padding:10px}
