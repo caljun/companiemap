@@ -16,7 +16,7 @@ function money(v:number|null,c:keyof typeof rates){
  if(v==null)return'—';
  const x=v*rates[c],absolute=Math.abs(x);
  if(c==='JPY'||c==='KRW'){const value=x/1000;return`${symbols[c]}${value.toFixed(Math.abs(value)>=100?0:1)}${c==='JPY'?'兆円':'조원'}`}
- if(absolute>=1000)return`${symbols[c]}${(x/1000).toFixed(1)}T`;
+ if(absolute>=1000)return`${symbols[c]}${(x/1000).toFixed(2)}T`;
  return`${symbols[c]}${x.toFixed(absolute>=100?0:1)}B`;
 }
 function radius(v:number|null,m:MetricKey){if(!v)return 0;return Math.max(9,Math.min(52,Math.sqrt(v)*.72*(m==='marketCap'?1:m==='revenue'?1.55:3.2)))}
