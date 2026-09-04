@@ -197,6 +197,31 @@ export function getAaplFinancialData(): Promise<FinancialData> {
   return getFinancialData('AAPL');
 }
 
+type FinancialDataResult =
+  | { data: FinancialData; error: null }
+  | { data: null; error: FinancialDataError };
+
+const getCachedFinancialDataResult = unstable_cache(
+  async (ticker: string): Promise<FinancialDataResult> => {
+    try {
+      return { data: await getFinancialData(ticker), error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error: {
+          ticker,
+          message: error instanceof Error ? error.message : 'An unknown server error occurred.',
+        },
+      };
+    }
+  },
+  ['fmp', 'financial-data-result'],
+  {
+    revalidate: FMP_CACHE_SECONDS.marketCap,
+    tags: ['fmp-financial-data-result'],
+  },
+);
+
 async function mapWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,
@@ -222,19 +247,11 @@ export async function getUsTopTenFinancialData(): Promise<{
   data: FinancialData[];
   errors: FinancialDataError[];
 }> {
-  const results = await mapWithConcurrency(US_TOP_TEN_TICKERS, 4, async (ticker) => {
-    try {
-      return { data: await getFinancialData(ticker), error: null };
-    } catch (error) {
-      return {
-        data: null,
-        error: {
-          ticker,
-          message: error instanceof Error ? error.message : 'An unknown server error occurred.',
-        },
-      };
-    }
-  });
+  const results = await mapWithConcurrency(
+    US_TOP_TEN_TICKERS,
+    4,
+    getCachedFinancialDataResult,
+  );
 
   return {
     data: results.flatMap((result) => (result.data ? [result.data] : [])),
