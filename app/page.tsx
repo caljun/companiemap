@@ -12,7 +12,13 @@ const base=[
 const caps=[5516,4789,4146,3787,2792,1973,1699,1555,1486,1087,1800,380,420,310,330,150,125,1200,360,690,280,155,210,185];
 const revRatios=[.03,.09,.11,.08,.23,.008,.1,.08,.09,.34,.25,.12,.08,.11,.9,.55,.09,.07,.45,.18,.48,.3,.42,.24];
 const companies:Company[]=base.map((row,i)=>{const [id,name,ticker,country,region,industry,lat,lng,accent]=row as [string,string,string,string,string,string,number,number,string];const cap=caps[i],rev=cap*revRatios[i];const make=(f:number)=>({marketCap:cap*f,revenue:rev*f,operatingIncome:rev*.18*f,netIncome:rev*.14*f});return{id,name,ticker,country,region,industry,lat,lng,accent,metrics:{2023:make(.72),2024:make(.86),2025:make(1)}}});
-function money(v:number|null,c:keyof typeof rates){if(v==null)return'—';const x=v*rates[c],local=c==='JPY'||c==='KRW';return`${symbols[c]}${(local?x/1000:x).toFixed(x>=100?0:1)} ${c==='JPY'?'兆円':c==='KRW'?'조원':'B'}`}
+function money(v:number|null,c:keyof typeof rates){
+ if(v==null)return'—';
+ const x=v*rates[c],absolute=Math.abs(x);
+ if(c==='JPY'||c==='KRW'){const value=x/1000;return`${symbols[c]}${value.toFixed(Math.abs(value)>=100?0:1)}${c==='JPY'?'兆円':'조원'}`}
+ if(absolute>=1000)return`${symbols[c]}${(x/1000).toFixed(1)}T`;
+ return`${symbols[c]}${x.toFixed(absolute>=100?0:1)}B`;
+}
 function radius(v:number|null,m:MetricKey){if(!v)return 0;return Math.max(9,Math.min(52,Math.sqrt(v)*.72*(m==='marketCap'?1:m==='revenue'?1.55:3.2)))}
 
 function FilterMenu({id,label,value,options,open,onToggle,onChange}:{id:string;label:string;value:string;options:{value:string;label:string}[];open:boolean;onToggle:()=>void;onChange:(value:string)=>void}){
