@@ -12,6 +12,24 @@ export type FinancialData = {
   updatedAt: string;
 };
 
+export type FinancialDataError = {
+  ticker: string;
+  message: string;
+};
+
+export const US_TOP_TEN_TICKERS = [
+  'NVDA',
+  'AAPL',
+  'GOOG',
+  'MSFT',
+  'AMZN',
+  'SPCX',
+  'AVGO',
+  'META',
+  'TSLA',
+  'BRK-B',
+] as const;
+
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 
 export const FMP_CACHE_SECONDS = {
@@ -84,13 +102,13 @@ async function fetchFmp(endpoint: string, params: Record<string, string>, label:
   return body;
 }
 
-function firstRecord(body: unknown, label: string): JsonRecord {
+function firstRecord(body: unknown, label: string, ticker: string): JsonRecord {
   if (!Array.isArray(body)) {
     throw new Error(`FMP ${label} returned an unexpected response shape; expected an array.`);
   }
   const first = body[0];
   if (!first || typeof first !== 'object' || Array.isArray(first)) {
-    throw new Error(`FMP ${label} returned no data for AAPL.`);
+    throw new Error(`FMP ${label} returned no data for ${ticker}.`);
   }
   return first as JsonRecord;
 }
@@ -106,13 +124,13 @@ function fiscalYearOf(statement: JsonRecord): number | null {
   return null;
 }
 
-async function fetchAaplMarketCap(): Promise<MarketCapSnapshot> {
+async function fetchMarketCap(ticker: string): Promise<MarketCapSnapshot> {
   const marketCapBody = await fetchFmp(
     'market-capitalization',
-    { symbol: 'AAPL' },
-    'market capitalization',
+    { symbol: ticker },
+    `${ticker} market capitalization`,
   );
-  const marketCap = firstRecord(marketCapBody, 'market capitalization');
+  const marketCap = firstRecord(marketCapBody, 'market capitalization', ticker);
 
   return {
     marketCap: nullableNumber(marketCap.marketCap),
@@ -120,13 +138,13 @@ async function fetchAaplMarketCap(): Promise<MarketCapSnapshot> {
   };
 }
 
-async function fetchAaplAnnualFinancials(): Promise<AnnualFinancialSnapshot> {
+async function fetchAnnualFinancials(ticker: string): Promise<AnnualFinancialSnapshot> {
   const incomeStatementBody = await fetchFmp(
     'income-statement',
-    { symbol: 'AAPL' },
-    'income statement',
+    { symbol: ticker },
+    `${ticker} income statement`,
   );
-  const incomeStatement = firstRecord(incomeStatementBody, 'income statement');
+  const incomeStatement = firstRecord(incomeStatementBody, 'income statement', ticker);
 
   return {
     revenue: nullableNumber(incomeStatement.revenue),
@@ -137,32 +155,32 @@ async function fetchAaplAnnualFinancials(): Promise<AnnualFinancialSnapshot> {
   };
 }
 
-const getCachedAaplMarketCap = unstable_cache(
-  fetchAaplMarketCap,
-  ['fmp', 'AAPL', 'market-capitalization'],
+const getCachedMarketCap = unstable_cache(
+  fetchMarketCap,
+  ['fmp', 'market-capitalization'],
   {
     revalidate: FMP_CACHE_SECONDS.marketCap,
-    tags: ['fmp-aapl-market-cap'],
+    tags: ['fmp-market-cap'],
   },
 );
 
-const getCachedAaplAnnualFinancials = unstable_cache(
-  fetchAaplAnnualFinancials,
-  ['fmp', 'AAPL', 'annual-financials'],
+const getCachedAnnualFinancials = unstable_cache(
+  fetchAnnualFinancials,
+  ['fmp', 'annual-financials'],
   {
     revalidate: FMP_CACHE_SECONDS.annualFinancials,
-    tags: ['fmp-aapl-annual-financials'],
+    tags: ['fmp-annual-financials'],
   },
 );
 
-export async function getAaplFinancialData(): Promise<FinancialData> {
+export async function getFinancialData(ticker: string): Promise<FinancialData> {
   const [marketCap, annualFinancials] = await Promise.all([
-    getCachedAaplMarketCap(),
-    getCachedAaplAnnualFinancials(),
+    getCachedMarketCap(ticker),
+    getCachedAnnualFinancials(ticker),
   ]);
 
   return {
-    ticker: 'AAPL',
+    ticker,
     marketCap: marketCap.marketCap,
     revenue: annualFinancials.revenue,
     operatingIncome: annualFinancials.operatingIncome,
@@ -172,5 +190,54 @@ export async function getAaplFinancialData(): Promise<FinancialData> {
       marketCap.updatedAt > annualFinancials.updatedAt
         ? marketCap.updatedAt
         : annualFinancials.updatedAt,
+  };
+}
+
+export function getAaplFinancialData(): Promise<FinancialData> {
+  return getFinancialData('AAPL');
+}
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await task(items[index]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  return results;
+}
+
+export async function getUsTopTenFinancialData(): Promise<{
+  data: FinancialData[];
+  errors: FinancialDataError[];
+}> {
+  const results = await mapWithConcurrency(US_TOP_TEN_TICKERS, 4, async (ticker) => {
+    try {
+      return { data: await getFinancialData(ticker), error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error: {
+          ticker,
+          message: error instanceof Error ? error.message : 'An unknown server error occurred.',
+        },
+      };
+    }
+  });
+
+  return {
+    data: results.flatMap((result) => (result.data ? [result.data] : [])),
+    errors: results.flatMap((result) => (result.error ? [result.error] : [])),
   };
 }
