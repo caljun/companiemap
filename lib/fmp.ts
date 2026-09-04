@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { unstable_cache } from 'next/cache';
+
 export type FinancialData = {
   ticker: string;
   marketCap: number | null;
@@ -12,7 +14,25 @@ export type FinancialData = {
 
 const FMP_BASE_URL = 'https://financialmodelingprep.com/stable';
 
+export const FMP_CACHE_SECONDS = {
+  marketCap: 60 * 60 * 12,
+  annualFinancials: 60 * 60 * 24 * 7,
+} as const;
+
 type JsonRecord = Record<string, unknown>;
+
+type MarketCapSnapshot = {
+  marketCap: number | null;
+  updatedAt: string;
+};
+
+type AnnualFinancialSnapshot = {
+  revenue: number | null;
+  operatingIncome: number | null;
+  netIncome: number | null;
+  fiscalYear: number | null;
+  updatedAt: string;
+};
 
 function nullableNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -86,22 +106,71 @@ function fiscalYearOf(statement: JsonRecord): number | null {
   return null;
 }
 
-export async function getAaplFinancialData(): Promise<FinancialData> {
-  const [marketCapBody, incomeStatementBody] = await Promise.all([
-    fetchFmp('market-capitalization', { symbol: 'AAPL' }, 'market capitalization'),
-    fetchFmp('income-statement', { symbol: 'AAPL' }, 'income statement'),
-  ]);
-
+async function fetchAaplMarketCap(): Promise<MarketCapSnapshot> {
+  const marketCapBody = await fetchFmp(
+    'market-capitalization',
+    { symbol: 'AAPL' },
+    'market capitalization',
+  );
   const marketCap = firstRecord(marketCapBody, 'market capitalization');
+
+  return {
+    marketCap: nullableNumber(marketCap.marketCap),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchAaplAnnualFinancials(): Promise<AnnualFinancialSnapshot> {
+  const incomeStatementBody = await fetchFmp(
+    'income-statement',
+    { symbol: 'AAPL' },
+    'income statement',
+  );
   const incomeStatement = firstRecord(incomeStatementBody, 'income statement');
 
   return {
-    ticker: 'AAPL',
-    marketCap: nullableNumber(marketCap.marketCap),
     revenue: nullableNumber(incomeStatement.revenue),
     operatingIncome: nullableNumber(incomeStatement.operatingIncome),
     netIncome: nullableNumber(incomeStatement.netIncome),
     fiscalYear: fiscalYearOf(incomeStatement),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+const getCachedAaplMarketCap = unstable_cache(
+  fetchAaplMarketCap,
+  ['fmp', 'AAPL', 'market-capitalization'],
+  {
+    revalidate: FMP_CACHE_SECONDS.marketCap,
+    tags: ['fmp-aapl-market-cap'],
+  },
+);
+
+const getCachedAaplAnnualFinancials = unstable_cache(
+  fetchAaplAnnualFinancials,
+  ['fmp', 'AAPL', 'annual-financials'],
+  {
+    revalidate: FMP_CACHE_SECONDS.annualFinancials,
+    tags: ['fmp-aapl-annual-financials'],
+  },
+);
+
+export async function getAaplFinancialData(): Promise<FinancialData> {
+  const [marketCap, annualFinancials] = await Promise.all([
+    getCachedAaplMarketCap(),
+    getCachedAaplAnnualFinancials(),
+  ]);
+
+  return {
+    ticker: 'AAPL',
+    marketCap: marketCap.marketCap,
+    revenue: annualFinancials.revenue,
+    operatingIncome: annualFinancials.operatingIncome,
+    netIncome: annualFinancials.netIncome,
+    fiscalYear: annualFinancials.fiscalYear,
+    updatedAt:
+      marketCap.updatedAt > annualFinancials.updatedAt
+        ? marketCap.updatedAt
+        : annualFinancials.updatedAt,
   };
 }

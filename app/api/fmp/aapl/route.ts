@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAaplFinancialData } from '@/lib/fmp';
+import { FMP_CACHE_SECONDS, getAaplFinancialData } from '@/lib/fmp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,13 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const data = await getAaplFinancialData();
-    return NextResponse.json({ data });
+    return NextResponse.json({
+      data,
+      cachePolicy: {
+        marketCapSeconds: FMP_CACHE_SECONDS.marketCap,
+        annualFinancialsSeconds: FMP_CACHE_SECONDS.annualFinancials,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'An unknown server error occurred.';
     const status = message.startsWith('FMP_API_KEY') ? 500 : 502;
